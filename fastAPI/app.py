@@ -17,24 +17,18 @@ try:
 except Exception as e:
     print('[ERROR] Load error in app.py: ', e)
 
-model_path = "path/to/model/onxxfile/yolov5.onnx"
-conf_threshold = 0.65
+EXPORTED_MODELS_DIR = "path/to/exported/models"
+conf_threshold = 0.6
 
 app = FastAPI()
 
-class ImageJson(BaseModel):
-    label: Any
+# Pydantic models 
+class ImageJson(BaseModel):        # model is used to represent the JSON response containing information about detected objects in an image.
+    label: Any                 
 
-class BASE64Input(BaseModel):
+class BASE64Input(BaseModel):      # model is used to accept base64-encoded image data as input to the inference APIs
     image_path: str
 
-def get_label_path(image_path, format="json"):
-    base_path = os.path.dirname(os.path.dirname(image_path))
-    image_filename = os.path.basename(image_path)
-    image_name, _ = os.path.splitext(image_filename)
-    label_filename = f"{image_name}.{format}"
-    label_path = os.path.join(base_path, "labels", format, label_filename)
-    return label_path
 
 def remove_dir(dir_path="runs/detect/exp"):
     if os.path.exists(dir_path):
@@ -45,34 +39,6 @@ def remove_dir(dir_path="runs/detect/exp"):
             print(f"Error: {dir_path} : {e.strerror}")
     else:
         print(f"Directory {dir_path} does not exist.")
-
-def extract_coordinates(json_path):
-    with open(json_path, "rb") as f:
-        data = json.load(f)
-    coordinates = []
-    for obj in data:
-        if (
-            "ObjectClassName" in obj
-            and "Left" in obj
-            and "Top" in obj
-            and "Right" in obj
-            and "Bottom" in obj
-        ):
-            objectClassName = obj["ObjectClassName"]
-            left = obj["Left"]
-            top = obj["Top"]
-            right = obj["Right"]
-            bottom = obj["Bottom"]
-            coordinates.append(
-                {
-                    "ObjectClassName": objectClassName,
-                    "Left": left,
-                    "Top": top,
-                    "Right": right,
-                    "Bottom": bottom,
-                }
-            )
-    return coordinates
 
 def base64_to_image(base64_str, save_path="images_from_base64\image.png", format="PNG"):
     img_data = base64.b64decode(base64_str)
@@ -144,12 +110,12 @@ def get_model_labels(model_name: str):
 
 @app.post("/{model_name}/json/", response_model=ImageJson)
 def get_json(item: BASE64Input, model_name: str):
-    remove_dir("runs/detect/exp")
+    remove_dir("runs/detect/exp")  # remove results from previous inference
     base64_to_image(item.image_path)
 
-    if model_name == "yolov5s":
+    if model_name == "yolov5":
         run(
-            weights="runs/train/exp/weights/yolov5s.onnx",
+            weights="runs/train/exp/weights/yolov5.onnx",
             conf_thres=conf_threshold,
             source="images_from_base64",
             save_txt=True,
@@ -157,15 +123,10 @@ def get_json(item: BASE64Input, model_name: str):
             name="exp",
         )
 
-    elif model_name == "yolov5m":
+    elif model_name == "detr":
         run(
-            weights="runs/train/exp/weights/yolov5m.onnx",
-            conf_thres=conf_threshold,
-            source="images_from_base64",
-            save_txt=True,
-            save_conf=True,
-            name="exp",
-        )
+
+            )
 
     else:
         raise HTTPException(status_code=404, detail="Model Not Found !")
@@ -174,9 +135,9 @@ def get_json(item: BASE64Input, model_name: str):
         txt = f.read()
 
     json_str = txt_to_json(txt)
-    label = json.loads(json_str)
+    objects = json.loads(json_str)
     remove_dir("runs/detect/exp")
-    return {"label": label}
+    return {"objects": objects}
 
 @app.post("/{model_name}/predict-box/")
 async def predict_box(model_name: str, file: UploadFile = File(...)):
@@ -187,9 +148,9 @@ async def predict_box(model_name: str, file: UploadFile = File(...)):
     with open(f"data/images/{file.filename}", "wb") as f:
         f.write(contents)
 
-    if model_name == "yolov5s":
+    if model_name == "yolov5":
         run(
-            weights="runs/train/exp/weights/yolov5s.onnx",
+            weights="runs/train/exp/weights/yolov5.onnx",
             conf_thres=conf_threshold,
             source="data/images",
             save_txt=True,
@@ -197,14 +158,9 @@ async def predict_box(model_name: str, file: UploadFile = File(...)):
             name="exp",
         )
 
-    elif model_name == "yolov5m":
+    elif model_name == "dtr":
         run(
-            weights="runs/train/exp/weights/yolov5m.onnx",
-            conf_thres=conf_threshold,
-            source="data/images",
-            save_txt=True,
-            save_conf=True,
-            name="exp",
+            
         )
 
     else:
@@ -221,7 +177,7 @@ async def predict_json(model_name: str, file: UploadFile = File(...)):
     with open(f"data/images/{file.filename}", "wb") as f:
         f.write(contents)
 
-    if model_name == "yolov5s":
+    if model_name == "yolov5":
         run(
             weights="runs/train/exp/weights/yolov5s.onnx",
             conf_thres=conf_threshold,
@@ -231,14 +187,9 @@ async def predict_json(model_name: str, file: UploadFile = File(...)):
             name="exp",
         )
 
-    elif model_name == "yolov5m":
+    elif model_name == "detr:
         run(
-            weights="runs/train/exp/weights/yolov5m.onnx",
-            conf_thres=conf_threshold,
-            source="data/images",
-            save_txt=True,
-            save_conf=True,
-            name="exp",
+            
         )
 
     else:
